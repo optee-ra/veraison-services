@@ -1,3 +1,6 @@
+#
+# File: veraison-services-b50b67d/deploymants/docker/Makefile
+#
 # Copyright 2023 Contributors to the Veraison project.
 # SPDX-License-Identifier: Apache-2.0
 ##############################################################################
@@ -12,6 +15,14 @@ DEBUG_HOST ?= builder
 # bypass local layer cache by specifying DOCKER_BUILD_FLAGS=--no-cache
 DOCKER_BUILD_FLAGS ?=
 ##############################################################################
+
+DIR_SOURCES ?= /containeres/builds/optee-ra2-share/services
+GOARCH ?= arm64
+GOOS ?= linux
+CGO_ENABLED ?= 1
+CC ?= aarch64-linux-gnu-gcc
+PREFIX  ?= /opt/veraison-services
+DESTDIR ?= /containeres/volumes/optee-ra-iisec-v2/out/newroot_veraison_services
 
 .DEFAULT_TARGET: all
 
@@ -56,6 +67,10 @@ build: .built/build
 
 .built/build: .built/builder
 	docker container run --rm \
+		-e GOOS=$(GOOS) \
+		-e GOARCH=$(GOARCH) \
+		-e CGO_ENABLED=$(CGO_ENABLED) \
+		-e CC=$(CC) \
 		-v $(THIS_DIR)../..:/veraison/build veraison/builder build
 	@mkdir -p .built && touch .built/build
 
@@ -163,6 +178,49 @@ deployment: .built/deployment
 .built/deployment: network services manager
 	@mkdir -p .built && touch .built/deployment
 
+#
+#
+.PHONY: install-target-directory install-provisioning
+
+# 1. Target directory creation
+install-target-directory:
+	install -v -d $(DESTDIR)$(PREFIX)/bin
+	install -v -d $(DESTDIR)$(PREFIX)/config
+	install -v -d $(DESTDIR)$(PREFIX)/plugins
+	install -v -d $(DESTDIR)$(PREFIX)/logs
+	install -v -d $(DESTDIR)$(PREFIX)/lib/systemd/system
+
+# 2. Provisioning service installation
+install-provisioning: install-target-directory
+	# Find and install provisioning-service binary
+	@bin_path=$$(find $(DIR_SOURCES) -type f -name "provisioning-service" -not -path "*/.git/*" | head -n 1); \
+	if [ -n "$$bin_path" ]; then \
+		echo "Installing binary: $$bin_path"; \
+		install -v -m 755 "$$bin_path" $(DESTDIR)$(PREFIX)/bin/; \
+	else \
+		echo "Error: provisioning-service binary not found under $(DIR_SOURCES)" >&2; \
+		exit 1; \
+	fi
+
+	# Find and install all *.plugin files
+	@echo "Searching for *.plugin files under $(DIR_SOURCES)..."; \
+	plugin_files=$$(find $(DIR_SOURCES) -type f -name "*.plugin" -not -path "*/.git/*" -not -path "*/test/*"); \
+	if [ -n "$$plugin_files" ]; then \
+		for plugin in $$plugin_files; do \
+			install -v -m 755 "$$plugin" $(DESTDIR)$(PREFIX)/plugins/; \
+		done; \
+	else \
+		echo "Warning: No *.plugin files found under $(DIR_SOURCES)"; \
+	fi
+
+	# Install configuration file for provisioning
+	@cfg_path=$$(find $(DIR_SOURCES) -type f -path "*/provisioning-service/config.yaml" -not -path "*/.git/*" | head -n 1); \
+	if [ -n "$$cfg_path" ]; then \
+		echo "Installing config: $$cfg_path"; \
+		install -v -m 644 "$$cfg_path" $(DESTDIR)$(PREFIX)/config/provisioning-config.yaml; \
+	fi
+
+
 .PHONY: prune
 prune:
 	docker image prune -f
@@ -248,3 +306,5 @@ export __MAKEFILE_HELP
 .PHONY: help
 help:
 	@echo "$$__MAKEFILE_HELP"
+
+# End of File: veraison-services-b50b67d/deploymants/docker/Makefile

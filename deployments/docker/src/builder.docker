@@ -1,8 +1,12 @@
+#
+# File: veraison-services-b50b67d/deploymants/docker/src/builder.docker
+#
+
 # Go version that will be used to build the project. Due to the use of generics
 # within the project, it must be at least 1.19.
-ARG GO_VERSION=1.19
+ARG GO_VERSION=1.26
 
-FROM golang:${GO_VERSION} as veraison-builder
+FROM golang:${GO_VERSION} AS veraison-builder
 
 # User identity that will be used to build the project. This should be
 # overriden at build time to match the host user running the builder, who owns
@@ -10,20 +14,25 @@ FROM golang:${GO_VERSION} as veraison-builder
 ARG BUILDER_UID=1000
 ARG BUILDER_GID=1000
 
-RUN apt-get update \
+RUN dpkg --add-architecture arm64 \
+    && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install \
-        --assume-yes \
-        --no-install-recommends \
-        protobuf-compiler \
-        libprotobuf-dev \
-        sqlite3 \
-	uuid-runtime \
-	gettext-base \
-        vim \
-        jq \
-        iputils-ping \
-        nmap \
-        sudo \
+    --assume-yes \
+    --no-install-recommends \
+    protobuf-compiler \
+    libprotobuf-dev \
+    sqlite3 \
+    uuid-runtime \
+    gettext-base \
+    vim \
+    jq \
+    iputils-ping \
+    nmap \
+    sudo \
+    crossbuild-essential-arm64 \
+    libc6-dev-arm64-cross \
+    libc6:arm64 \
+    qemu-user-static \
     && uuidgen | tr -d - > /etc/machine-id \
     && apt-get clean \
     && apt-get autoremove --assume-yes \
@@ -67,3 +76,5 @@ ADD --chown=builder:builder builder-bashrc /home/builder/.bashrc
 
 ENTRYPOINT ["/veraison/builder-dispatcher"]
 CMD ["help"]
+
+# End of File: veraison-services-b50b67d/deploymants/docker/src/builder.docker

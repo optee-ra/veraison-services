@@ -1,6 +1,13 @@
 #!/bin/bash
+
+#
+# File: veraison-services-b50b67d/deploymants/docker/src/service-entrypoint
+#
+
+
 # Copyright 2023 Contributors to the Veraison project.
 # SPDX-License-Identifier: Apache-2.0
 umask 0002
 exec "$@"
 
+# End of File: veraison-services-b50b67d/deploymants/docker/src/service-entrypoint

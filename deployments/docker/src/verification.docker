@@ -1,7 +1,11 @@
+#
+# File: veraison-services-b50b67d/deploymants/docker/src/verification.docker
+#
+
 # Verification service container.
 # The context for building this image is assumed to be the Veraison deployment
 # directory (/tmp/veraison is the default for make build).
-FROM debian as veraison-verification
+FROM debian AS veraison-verification
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install \
@@ -27,3 +31,4 @@ ADD --chown=veraison:nogroup config.yaml verification-service service-entrypoint
 ENTRYPOINT ["/opt/veraison/service-entrypoint"]
 CMD ["/opt/veraison/verification-service"]
 
+# End of File: veraison-services-b50b67d/deploymants/docker/src/verification.docker
