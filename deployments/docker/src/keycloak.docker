@@ -1,4 +1,8 @@
-FROM quay.io/keycloak/keycloak:22.0.1 as keycloak-builder
+#
+# File: veraison-services-b50b67d/deploymants/docker/src/keycloak.docker
+#
+
+FROM quay.io/keycloak/keycloak:22.0.1 AS keycloak-builder
 
 WORKDIR /opt/keycloak
 # note: for development set up early; use proper certification in production.
@@ -15,3 +19,5 @@ COPY veraison-realm.json /opt/keycloak/data/import/veraison-realm.json
 
 ENTRYPOINT ["/opt/keycloak/bin/kc.sh"]
 CMD ["start", "--optimized", "--import-realm"]
+
+# End of File: veraison-services-b50b67d/deploymants/docker/src/keycloak.docker

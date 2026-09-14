@@ -1,0 +1,477 @@
+#!/bin/bash
+#
+# File: deployments/docker/veraison
+#
+# Copyright 2023 Contributors to the Veraison project.
+# SPDX-License-Identifier: Apache-2.0
+
+# Strict mode
+set -euo pipefail
+
+# Global Constants (Read-only)
+declare -r VERAISON_HOME="/opt/veraison"
+declare -r VERAISON_UTILS="${VERAISON_HOME}/utils"
+
+# Systemd unit names for Veraison services
+declare -r SERVICE_VTS="vts-service"
+declare -r SERVICE_PROV="provisioning-service"
+declare -r SERVICE_VERIF="verification-service"
+declare -r SERVICE_MANAGE="management-service"
+declare -r SERVICE_KEYCLOAK="keycloak-service"
+
+# Global flags (Mutable)
+declare _quiet=false
+declare _color=true
+
+# Global color variables (Mutable)
+declare _purp=''
+declare _red=''
+declare _reset=''
+declare _yell=''
+declare _green=''
+declare _blue=''
+declare _magen=''
+declare _white=''
+
+# Position arguments storage for getopt
+declare -a POS_ARGS=()
+
+# --- Logging Functions ---
+function _reset_colors() {
+    local is_color="${_color}"
+
+    # Set or reset ANSI color variables
+    if [[ "${is_color}" == true ]]; then
+        _purp='\033[1;34m'
+        _red='\033[0;31m'
+        _reset='\033[0m'
+        _yell='\033[0;33m'
+        _green='\033[0;32m'
+        _blue='\033[0;34m'
+        _magen='\033[0;35m'
+        _white='\033[0;37m'
+    else
+        _purp=''
+        _red=''
+        _reset=''
+        _yell=''
+        _green=''
+        _blue=''
+        _magen=''
+        _white=''
+    fi
+}
+
+function log_info() {
+    local is_quiet="${_quiet}"
+    local color_blue="${_blue}"
+    local color_reset="${_reset}"
+
+    # Output informational messages
+    [[ "${is_quiet}" == false ]] && printf "%b[INFO]%b %s\n" "${color_blue}" "${color_reset}" "$*"
+    return 0
+}
+
+function log_warn() {
+    local color_yell="${_yell}"
+    local color_reset="${_reset}"
+
+    # Output warning messages
+    printf "%b[WARN]%b %s\n" "${color_yell}" "${color_reset}" "$*"
+}
+
+function log_error() {
+    local color_red="${_red}"
+    local color_reset="${_reset}"
+
+    # Output error messages
+    printf "%b[ERROR]%b %s\n" "${color_red}" "${color_reset}" "$*" >&2
+}
+
+# --- Service Operations ---
+function status() {
+    local is_quiet="${_quiet}"
+    local color_yell="${_yell}"
+    local color_green="${_green}"
+    local color_reset="${_reset}"
+
+    local service_vts="${SERVICE_VTS}"
+    local service_prov="${SERVICE_PROV}"
+    local service_verif="${SERVICE_VERIF}"
+    local service_manage="${SERVICE_MANAGE}"
+    local service_keycloak="${SERVICE_KEYCLOAK}"
+
+    # Ensure required command is installed
+    _check_installed jq
+
+    local vts
+    local prov
+    local verif
+    local manage
+    local keycloak
+    local status
+
+    vts=$(_get_service_state "${service_vts}")
+    prov=$(_get_service_state "${service_prov}")
+    verif=$(_get_service_state "${service_verif}")
+    manage=$(_get_service_state "${service_manage}")
+    keycloak=$(_get_service_state "${service_keycloak}")
+
+    if [[ "${is_quiet}" == true ]]; then
+        vts=$(_strip_color "${vts}")
+        prov=$(_strip_color "${prov}")
+        verif=$(_strip_color "${verif}")
+        manage=$(_strip_color "${manage}")
+        keycloak=$(_strip_color "${keycloak}")
+
+        status="${color_yell}stopped${color_reset}"
+
+        if [[ "${vts}" == "running" || "${prov}" == "running" || "${verif}" == "running" || \
+            "${manage}" == "running" || "${keycloak}" == "running" ]]; then
+            status="${color_yell}partial${color_reset}"
+        fi
+
+        if [[ "${vts}" == "running" && "${prov}" == "running" && "${verif}" == "running"  && \
+            "${manage}" == "running" && "${keycloak}" == "running" ]]; then
+            status="${color_green}running${color_reset}"
+        fi
+
+        printf "%b\n" "${status}"
+    else
+        printf "         vts: %b\n" "${vts}"
+        printf "provisioning: %b\n" "${prov}"
+        printf "verification: %b\n" "${verif}"
+        printf "  management: %b\n" "${manage}"
+        printf "    keycloak: %b\n" "${keycloak}"
+    fi
+}
+
+function start() {
+    local what="${1:-}"
+
+    case "${what}" in
+        "")
+            # Start all services in dependency order
+            start_keycloak
+            start_vts
+            sleep 0.5 # Wait for vts to start before starting services that depend on it
+            start_provisioning
+            start_verification
+            start_management
+            ;;
+        vts|vts-service)
+            start_vts
+            ;;
+        provisioning|provisioning-service)
+            start_provisioning
+            ;;
+        verification|verification-service)
+            start_verification
+            ;;
+        management|management-service)
+            start_management
+            ;;
+        keycloak|keycloak-service)
+            start_keycloak
+            ;;
+        *)
+            log_error "Unknown service: ${what}"
+            exit 1
+            ;;
+    esac
+}
+
+function stop() {
+    local what="${1:-}"
+
+    case "${what}" in
+        "")
+            # Stop all services in reverse order
+            stop_management
+            stop_verification
+            stop_provisioning
+            stop_vts
+            stop_keycloak
+            ;;
+        vts|vts-service)
+            stop_vts
+            ;;
+        provisioning|provisioning-service)
+            stop_provisioning
+            ;;
+        verification|verification-service)
+            stop_verification
+            ;;
+        management|management-service)
+            stop_management
+            ;;
+        keycloak|keycloak-service)
+            stop_keycloak
+            ;;
+        *)
+            log_error "Unknown service: ${what}"
+            exit 1
+            ;;
+    esac
+}
+
+function follow() {
+    local what="${1:-}"
+
+    case "${what}" in
+        vts|vts-service) follow_vts ;;
+        provisioning|provisioning-service) follow_provisioning ;;
+        verification|verification-service) follow_verification ;;
+        management|management-service) follow_management ;;
+        keycloak|keycloak-service) follow_keycloak ;;
+        *) log_error "Unknown service: ${what}"; exit 1 ;;
+    esac
+}
+
+# --- Systemd Wrapper Functions ---
+function _start_unit() {
+    local unit="${1}"
+    log_info "Starting systemd unit: ${unit}"
+    sudo systemctl start "${unit}"
+}
+
+function _stop_unit() {
+    local unit="${1}"
+    log_info "Stopping systemd unit: ${unit}"
+    sudo systemctl stop "${unit}"
+}
+
+function _follow_unit() {
+    local unit="${1}"
+    # Stream logs from journalctl for the specified unit
+    journalctl -u "${unit}" -f -n 50
+}
+
+# --- Service Specific Functions ---
+function start_vts() {
+    local service_vts="${SERVICE_VTS}"
+    _start_unit "${service_vts}"
+}
+function stop_vts() {
+    local service_vts="${SERVICE_VTS}"
+    _stop_unit "${service_vts}"
+}
+function follow_vts() {
+    local service_vts="${SERVICE_VTS}"
+    _follow_unit "${service_vts}"
+}
+
+function start_provisioning() {
+    local service_prov="${SERVICE_PROV}"
+    _start_unit "${service_prov}"
+}
+function stop_provisioning() {
+    local service_prov="${SERVICE_PROV}"
+    _stop_unit "${service_prov}"
+}
+function follow_provisioning() {
+    local service_prov="${SERVICE_PROV}"
+    _follow_unit "${service_prov}"
+}
+
+function start_verification() {
+    local service_verif="${SERVICE_VERIF}"
+    _start_unit "${service_verif}"
+}
+function stop_verification() {
+    local service_verif="${SERVICE_VERIF}"
+    _stop_unit "${service_verif}"
+}
+function follow_verification() {
+    local service_verif="${SERVICE_VERIF}"
+    _follow_unit "${service_verif}"
+}
+
+function start_management() {
+    local service_manage="${SERVICE_MANAGE}"
+    _start_unit "${service_manage}"
+}
+function stop_management() {
+    local service_manage="${SERVICE_MANAGE}"
+    _stop_unit "${service_manage}"
+}
+function follow_management() {
+    local service_manage="${SERVICE_MANAGE}"
+    _follow_unit "${service_manage}"
+}
+
+function start_keycloak() {
+    local service_keycloak="${SERVICE_KEYCLOAK}"
+    _start_unit "${service_keycloak}"
+}
+function stop_keycloak() {
+    local service_keycloak="${SERVICE_KEYCLOAK}"
+    _stop_unit "${service_keycloak}"
+}
+function follow_keycloak() {
+    local service_keycloak="${SERVICE_KEYCLOAK}"
+    _follow_unit "${service_keycloak}"
+}
+
+# --- Native Environment CLI Wrappers ---
+function cocli() {
+    # Execute cocli command natively
+    _check_installed cocli
+    command cocli "$@"
+}
+
+function evcli() {
+    # Execute evcli command natively
+    _check_installed evcli
+    command evcli "$@"
+}
+
+function pocli() {
+    # Execute pocli command natively
+    _check_installed pocli
+    command pocli "$@"
+}
+
+function _get_service_state() {
+    local unit="${1}"
+    local color_green="${_green}"
+    local color_yell="${_yell}"
+    local color_reset="${_reset}"
+    local state
+
+    # Check systemd service status
+    state=$(systemctl is-active "${unit}" 2>/dev/null || true)
+
+    if [[ "${state}" == "active" ]]; then
+        printf "%b" "${color_green}running${color_reset}"
+    else
+        printf "%b" "${color_yell}stopped${color_reset}"
+    fi
+}
+
+function _check_installed() {
+    local what="${1}"
+    local veraison_utils="${VERAISON_UTILS}"
+
+    # Verify binary availability in PATH or Veraison utils directory
+    if ! command -v "${what}" &>/dev/null && [[ ! -x "${veraison_utils}/${what}" ]]; then
+        log_error "${what} executable must be installed to use this command."
+        exit 1
+    fi
+}
+
+function _strip_color() {
+    local _bash_color='\\033\[[0-9]{1,3}(;[0-9]{1,2};?)?m'
+    # Remove ANSI color codes from string
+    printf "%s" "$*" | sed -r "s/${_bash_color}//g"
+}
+
+# --- Help / Usage Function ---
+function usage() {
+    cat <<EOF
+Usage: veraison [-q] [-h] [-C] COMMAND [ARG...]
+
+Management script for Native (systemd) Veraison services.
+
+Options:
+    -q  Enables quiet output for commands that support it.
+    -h  Prints this message and exits.
+    -C  Disables color output.
+
+Commands:
+    help
+            Print this message and exit (same as -h).
+
+    start [SERVICE]
+            Start a single Veraison service, or all if unspecified.
+            Services: vts, provisioning, verification, management, keycloak
+
+    stop [SERVICE]
+            Stop a single Veraison service, or all if unspecified.
+
+    status
+            Show status of each Veraison service.
+
+    short-status
+            Show summary status for script automation.
+
+    follow SERVICE
+            Follow logs from journalctl for specified SERVICE.
+
+    cocli / evcli / pocli [ARGS...]
+            Execute Veraison CLI tools directly.
+EOF
+}
+
+# --- Option Parser Function ---
+function parse_options() {
+    local parsed_args
+    parsed_args=$(getopt "hqC" "$@") || {
+        log_error "Failed to parse options."
+        exit 1
+    }
+
+    eval set -- "${parsed_args}"
+    while true; do
+        case "${1}" in
+            -h) usage; exit 0 ;;
+            -C) _color=false; shift ;;
+            -q) _quiet=true; shift ;;
+            --) shift; break ;;
+            *)  break ;;
+        esac
+    done
+
+    _reset_colors
+    POS_ARGS=("$@")
+}
+
+# --- Main Entry Point ---
+function main() {
+    local veraison_utils="${VERAISON_UTILS}"
+    local pos_args=()
+    local _this_dir
+    local command
+
+    _this_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+    # Append Veraison utils path to environment PATH
+    export PATH="${veraison_utils}:${PATH}"
+
+    # Source deployment configuration if present
+    if [[ -f "${_this_dir}/deployment.cfg" ]]; then
+        set -a
+        # shellcheck source=/dev/null
+        source "${_this_dir}/deployment.cfg"
+        set +a
+    fi
+
+    # Parse command line options
+    parse_options "$@"
+
+    # Copy POS_ARGS array to local
+    pos_args=("${POS_ARGS[@]}")
+    set -- "${pos_args[@]}"
+
+    command="${1:-}"
+    shift 2>/dev/null || true
+
+    case "${command}" in
+        help) usage ;;
+        start) start "${1:-}" ;;
+        stop) stop "${1:-}" ;;
+        follow) follow "${1:-}" ;;
+        status) status ;;
+        short-status) _color=false; _reset_colors; _quiet=true; status ;;
+        cocli) cocli "$@" ;;
+        evcli) evcli "$@" ;;
+        pocli) pocli "$@" ;;
+        "") usage; exit 1 ;;
+        *) log_error "Unexpected command: \"${command}\" (use -h for help)"; exit 1 ;;
+    esac
+}
+
+# Execute main function with all script arguments
+main "$@"
+
+# End of File: deployments/docker/veraison

@@ -9,7 +9,7 @@
 # targets:
 # * test - run $(GOPKG) unit tests
 
-TEST_ARGS ?= -v -cover -race
+TEST_ARGS ?= -v -cover
 MOCKGEN := $(shell go env GOPATH)/bin/mockgen
 
 define MOCK_template

@@ -1,4 +1,9 @@
 #!/bin/bash
+
+#
+# File: veraison-services-b50b67d/deploymants/docker/src/builder-dispatcher
+#
+
 # Copyright 2023 Contributors to the Veraison project.
 # SPDX-License-Identifier: Apache-2.0
 # This script is the entry point for the builder docker container.
@@ -89,3 +94,5 @@ case $command in
     build) build;;
     *) echo -e "$_ERROR: unexpected command: \"$command\"";;
 esac
+
+# End of File: veraison-services-b50b67d/deploymants/docker/src/builder-dispatcher
