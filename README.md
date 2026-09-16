@@ -1,5 +1,9 @@
 # Services
 
+> [!NOTE]
+> This repository is a fork of [Veraison/Services](https://github.com/veraison/services). 
+> Please note that this is a forked version and may not reflect the latest upstream changes.
+
 This repository contains attestation services assembled using Veraison components.
 
 ## Pre-built packages
