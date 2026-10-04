@@ -23,6 +23,7 @@ CGO_ENABLED ?= 1
 CC ?= aarch64-linux-gnu-gcc
 PREFIX  ?= /opt/veraison-services
 DESTDIR ?= /containeres/volumes/optee-ra-iisec-v2/out/newroot_veraison_services
+NCPU := $(shell nproc | awk '{ print ($$1 - 2 > 1) ? $$1 - 2 : 1 }')
 
 .DEFAULT_TARGET: all
 
@@ -67,6 +68,7 @@ build: .built/build
 
 .built/build: .built/builder
 	docker container run --rm \
+		-e GOMAXPROCS=$(NCPU) \
 		-e GOOS=$(GOOS) \
 		-e GOARCH=$(GOARCH) \
 		-e CGO_ENABLED=$(CGO_ENABLED) \
