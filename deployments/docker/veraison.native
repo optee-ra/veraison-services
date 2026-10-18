@@ -13,11 +13,11 @@ declare -r VERAISON_HOME="/opt/veraison"
 declare -r VERAISON_UTILS="${VERAISON_HOME}/utils"
 
 # Systemd unit names for Veraison services
-declare -r SERVICE_VTS="vts-service"
-declare -r SERVICE_PROV="provisioning-service"
-declare -r SERVICE_VERIF="verification-service"
-declare -r SERVICE_MANAGE="management-service"
-declare -r SERVICE_KEYCLOAK="keycloak-service"
+declare -r SERVICE_VTS="veraison-vts"
+declare -r SERVICE_PROV="veraison-provisioning"
+declare -r SERVICE_VERIF="veraison-verification"
+declare -r SERVICE_MANAGE="veraison-management"
+declare -r SERVICE_KEYCLOAK="keycloak"
 
 # Global flags (Mutable)
 declare _quiet=false
